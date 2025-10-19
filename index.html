@@ -221,11 +221,11 @@
           </select>
         </label>
         <label>
-          Earliest year
+          From Year
           <input id="fromYear" type="number" placeholder="e.g. 1300" />
         </label>
         <label>
-          Latest year
+          To Year
           <input id="toYear" type="number" placeholder="e.g. 1500" />
         </label>
         <label>
@@ -307,7 +307,6 @@
     const languageSelect = document.querySelector("#languageSelect");
     const fromYearInput = document.querySelector("#fromYear");
     const toYearInput = document.querySelector("#toYear");
-    const linkFilter = document.querySelector("#linkFilter");
     const sortOrderSelect = document.querySelector("#sortOrder");
     const resultsTable = document.querySelector("#resultsTable");
     const resultsBody = resultsTable.querySelector("tbody");
@@ -565,12 +564,6 @@
       if (!hasYearData) return fromYear === null && toYear === null; // treat as unknown -> only passes when no year filters
       if (fromYear !== null && range.max < fromYear) return false;
       if (toYear !== null && range.min > toYear) return false;
-      return true;
-    }
-
-    function matchesLinkFilter(linksArray, setting) {
-      if (setting === "with") return linksArray.length > 0;
-      if (setting === "without") return linksArray.length === 0;
       return true;
     }
 
@@ -908,7 +901,6 @@ function saveFaves() { localStorage.setItem(LS_KEY, JSON.stringify(faves)); rebu
       const languageFilterValue = languageSelect.value;
       const fromYear = fromYearInput.value !== '' ? Number(fromYearInput.value) : null;
       const toYear = toYearInput.value !== '' ? Number(toYearInput.value) : null;
-      const linkSetting = linkFilter.value;
       const sortOrder = sortOrderSelect.value;
 
       const filtered = catalogueRows.filter((row) => {
@@ -917,7 +909,6 @@ function saveFaves() { localStorage.setItem(LS_KEY, JSON.stringify(faves)); rebu
         }
         if (!matchesLanguage(row.Language || '', languageFilterValue)) return false;
         if (!matchesYearRangeParsed(row._range, fromYear, toYear)) return false;
-        if (!matchesLinkFilter(row._links, linkSetting)) return false;
         return true;
       });
 
@@ -956,7 +947,7 @@ renderTable(sorted);
     function attachFilterHandlers() {
       const debounced = debounce(applyFilters, 200);
       searchInput.addEventListener('input', debounced);
-      [languageSelect, fromYearInput, toYearInput, linkFilter, sortOrderSelect]
+      [languageSelect, fromYearInput, toYearInput, sortOrderSelect]
         .forEach((el) => el.addEventListener('change', applyFilters));
     }
 // ---------- Init ----------
