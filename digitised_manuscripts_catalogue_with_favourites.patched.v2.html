@@ -1,0 +1,1009 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Simple Unofficial British Library Manuscripts Explorer</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root {
+      color-scheme: light dark;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    }
+
+    body {
+      margin: 0;
+      padding: 1.5rem;
+      background: Canvas;
+      color: CanvasText;
+    }
+
+    h1 {
+      margin-top: 0;
+      font-size: 1.75rem;
+    }
+
+    .layout {
+      display: grid;
+      gap: 1rem;
+      grid-template-columns: 1.8fr 1fr;
+    }
+
+    @media (max-width: 1100px) {
+      .layout {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .filters {
+      display: grid;
+      gap: 0.75rem;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      margin-bottom: 1rem;
+      align-items: end;
+    }
+
+    label {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+      font-size: 0.95rem;
+    }
+
+    input, select, textarea, button {
+      padding: 0.45rem 0.6rem;
+      font-size: 1rem;
+      border: 1px solid rgb(180, 180, 180);
+      border-radius: 8px;
+      background: Field;
+      color: FieldText;
+    }
+
+    input:focus, select:focus, textarea:focus, button:focus {
+      outline: 2px solid Highlight;
+      outline-offset: 1px;
+    }
+
+    button {
+      cursor: pointer;
+    }
+
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      font-size: 0.95rem;
+    }
+        /* Make columns fixed and clip overflow */
+    table { table-layout: fixed; }                  /* add */
+    th, td { overflow: hidden; text-overflow: ellipsis; }  /* add */
+
+    /* Star cell & button get a fixed box */
+    #resultsTable td:first-child { padding: 0 0.25rem; }   /* add */
+    .star-btn{
+      width: 1.5rem;            /* add */
+      height: 1.5rem;           /* add */
+      display: inline-grid;     /* add */
+      place-items: center;      /* add */
+      font-size: 1rem;          /* keep constant */
+    }
+
+
+    thead {
+      background: rgb(236, 236, 236);
+      color: rgb(32, 32, 32);
+      position: sticky;
+      top: 0;
+      z-index: 1;
+    }
+
+    th, td {
+      padding: 0.6rem 0.75rem;
+      border-bottom: 1px solid rgb(210, 210, 210);
+      vertical-align: top;
+    }
+
+    tbody tr:nth-child(even) {
+      background: rgba(0, 0, 0, 0.03);
+    }
+
+    .summary {
+      margin-bottom: 0.75rem;
+      font-size: 0.95rem;
+    }
+
+    .loading, .error {
+      padding: 1.5rem;
+      border-radius: 8px;
+      font-size: 1rem;
+      background: rgba(0, 0, 0, 0.05);
+    }
+
+    .error {
+      background: rgba(255, 0, 0, 0.08);
+      color: rgb(160, 0, 0);
+    }
+
+    .link-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.2rem 0.45rem;
+      border-radius: 999px;
+      background: rgba(33, 150, 243, 0.1);
+      border: 1px solid rgba(33, 150, 243, 0.4);
+      margin: 0.15rem 0.3rem 0.15rem 0;
+      font-size: 0.85rem;
+    }
+
+    .link-pill a { color: inherit; text-decoration: none; }
+    .link-pill a:hover, .link-pill a:focus { text-decoration: underline; }
+
+    .star-btn {
+      font-size: 1.1rem;
+      background: none;
+      border: none;
+      padding: 0;
+      line-height: 1;
+    }
+
+    .star-btn.filled { filter: saturate(1.2); }
+
+    /* FAVOURITES PANEL */
+    .panel {
+      border: 1px solid rgb(210, 210, 210);
+      border-radius: 12px;
+      padding: 1rem;
+    }
+
+    .panel h2 { margin: 0 0 0.5rem; font-size: 1.25rem; }
+    .panel .muted { opacity: 0.8; font-size: 0.95rem; }
+
+    .panel .row { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
+
+    .folder-badge {
+      display: inline-flex; align-items: center; gap: 0.35rem;
+      background: rgba(0,0,0,0.05); border: 1px solid rgba(0,0,0,0.15);
+      border-radius: 999px; padding: 0.2rem 0.6rem; font-size: 0.9rem;
+    }
+
+    .fav-item {
+      border: 1px solid rgba(0,0,0,0.15);
+      border-radius: 10px;
+      padding: 0.6rem;
+      margin: 0.5rem 0;
+    }
+
+    .fav-actions { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+
+    .section-title { margin: 0.75rem 0 0.4rem; font-size: 1.05rem; }
+
+    .spacer { height: 0.5rem; }
+
+    .small { font-size: 0.9rem; }
+
+    .right { text-align: right; }
+  
+    /* Performance & layout containment */
+    #favouritesPanel { contain: content; }
+    #resultsTable tbody { content-visibility: auto; contain-intrinsic-size: 1000px 400px; }
+    /* Notes box: fixed max width and isolated layout */
+    #favouritesPanel textarea {
+      max-width: 540px;       /* cap width */
+      width: 100%;            /* fill container up to 540px */
+      box-sizing: border-box; /* keep padding inside width */
+      display: block;         /* prevent inline baseline shifts */
+      resize: both;           /* allow user to resize freely */
+      contain: layout paint;  /* isolate reflows/paints to itself */
+    }
+
+    </style>
+    
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+</head>
+<body>
+  <h1>Simple Unofficial British Library Manuscripts Explorer</h1>
+  <p>Browse, filter, sort and save favourites of the <a href="https://www.bl.uk/collection/digitised-manuscripts-archives">British Library's public repository of over 3000 manuscripts and archival documents.</a>
+ You can download the official PDF catalogue there. </p>
+  <p>This tiny project aims to make exploring this archive and enjoying it's contents a little easier. I cannot guaruntee accuracy as Data extraction from BL's PDF was automated. </p>
+
+  <section id="status" class="loading">Loading data…</section>
+
+  <div class="layout" id="app" hidden>
+    <main>
+      <section id="filters" class="filters">
+        <label>
+          Search (Shelfmark or Title)
+          <input id="searchInput" type="text" placeholder="e.g. Add MS 1524 or Portugal" />
+        </label>
+        <label>
+          Language
+          <select id="languageSelect">
+            <option value="">Any language</option>
+          </select>
+        </label>
+        <label>
+          Earliest year
+          <input id="fromYear" type="number" placeholder="e.g. 1300" />
+        </label>
+        <label>
+          Latest year
+          <input id="toYear" type="number" placeholder="e.g. 1500" />
+        </label>
+        <label>
+          With links only
+          <select id="linkFilter">
+            <option value="any">Show all entries</option>
+            <option value="with">Has IIIF link(s)</option>
+            <option value="without">No link available</option>
+          </select>
+        </label>
+        <label>
+          Sort by date
+          <select id="sortOrder">
+            <option value="original">Original order</option>
+            <option value="date-asc">Earliest first</option>
+            <option value="date-desc">Latest first</option>
+          </select>
+        </label>
+      </section>
+
+      <div class="summary" id="summary"></div>
+
+      <div style="overflow-x:auto; max-height: 70vh;">
+        <table id="resultsTable">
+          <!-- Add just after <table id="resultsTable"> -->
+          <colgroup>
+            <col style="width:2.25rem">  <!-- star -->
+            <col style="width:12ch">     <!-- shelfmark -->
+            <col>                        <!-- title grows -->
+            <col style="width:12ch">     <!-- dates -->
+            <col style="width:12ch">     <!-- language -->
+            <col style="width:10ch">     <!-- links -->
+          </colgroup>
+          <thead>
+            <tr>
+              <th scope="col" title="Favourite">★</th>
+              <th scope="col">Shelfmark</th>
+              <th scope="col">Title</th>
+              <th scope="col">Dates</th>
+              <th scope="col">Language</th>
+              <th scope="col">Links</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </main>
+
+    <aside>
+      <section class="panel" id="favouritesPanel">
+        <h2>Favourites</h2>
+        <div class="row small">
+          <span class="muted">Active folder:</span>
+          <select id="activeFolderSelect"></select>
+          <button id="addFolderBtn" title="Create a new folder">New Folder</button>
+          <button id="renameFolderBtn" title="Rename active folder">Rename</button>
+          <button id="deleteFolderBtn" title="Delete active folder">Delete</button>
+        </div>
+
+        <div class="spacer"></div>
+
+        <div class="row small">
+          <span class="folder-badge" id="folderStats">—</span>
+          <span class="muted">Star adds/removes in the active folder.</span>
+        </div>
+
+        <h3 class="section-title">Items</h3>
+        <div id="favItems"></div>
+
+        <h3 class="section-title">Import / Export</h3>
+        <div class="row">
+          <button id="exportBtn">Export JSON</button>
+          <input id="importInput" type="file" accept="application/json" />
+        </div>
+      </section>
+    </aside>
+  </div>
+
+  <script>
+    const CSV_PATH = "digitised-manuscripts-with-links.csv";
+
+    // DOM references
+    const statusEl = document.querySelector("#status");
+    const appEl = document.querySelector("#app");
+    const filtersSection = document.querySelector("#filters");
+    const searchInput = document.querySelector("#searchInput");
+    const languageSelect = document.querySelector("#languageSelect");
+    const fromYearInput = document.querySelector("#fromYear");
+    const toYearInput = document.querySelector("#toYear");
+    const linkFilter = document.querySelector("#linkFilter");
+    const sortOrderSelect = document.querySelector("#sortOrder");
+    const resultsTable = document.querySelector("#resultsTable");
+    const resultsBody = resultsTable.querySelector("tbody");
+    const summaryEl = document.querySelector("#summary");
+
+    // Favourites UI
+    const favPanel = document.querySelector('#favouritesPanel');
+    const activeFolderSelect = document.querySelector('#activeFolderSelect');
+    const addFolderBtn = document.querySelector('#addFolderBtn');
+    const renameFolderBtn = document.querySelector('#renameFolderBtn');
+    const deleteFolderBtn = document.querySelector('#deleteFolderBtn');
+    const favItemsEl = document.querySelector('#favItems');
+    const folderStatsEl = document.querySelector('#folderStats');
+    const exportBtn = document.querySelector('#exportBtn');
+    const importInput = document.querySelector('#importInput');
+
+    let catalogueRows = [];
+    let currentRows = [];
+    // ---------- Utilities ----------
+
+    // ---------- Generalised date parsing (supports day/month/year, ranges, circa, before/after, centuries incl. "10th C", decades, BCE) ----------
+    const MONTHS = {
+      jan:1, january:1, feb:2, february:2, mar:3, march:3, apr:4, april:4, may:5,
+      jun:6, june:6, jul:7, july:7, aug:8, august:8, sep:9, sept:9, september:9,
+      oct:10, october:10, nov:11, november:11, dec:12, december:12, "dec.":12, "sept.":9, "oct.":10, "nov.":11
+    };
+
+    function toDecimalYear(y, m=1, d=1) {
+      return y + (Math.max(1, Math.min(12, m)) - 1) / 12 + (Math.max(1, Math.min(31, d)) - 1) / 365.0;
+    }
+
+    function centuryBounds(centuryNum) {
+      const start = (centuryNum - 1) * 100 + 1;
+      const end   = centuryNum * 100;
+      return [start, end];
+    }
+
+    function decadeBounds(year) {
+      const start = Math.floor(year / 10) * 10;
+      return [start, start + 9];
+    }
+
+    function twoDigitToFullYear(baseYear, yy) {
+      const baseCentury = Math.floor(baseYear / 100) * 100;
+      const candidate = baseCentury + yy;
+      return candidate < baseYear ? candidate + 100 : candidate;
+    }
+
+    function cleanupDate(s) {
+      return s.replace(/\u2013|\u2014/g, "-").replace(/\s+/g, " ").trim();
+    }
+
+    function parseExactDayMonthYear(s) {
+      const re = /\b(\d{1,2})\s+([A-Za-z\.]+)\s+(\d{1,4})\s*(BC|BCE)?\b/i;
+      const m  = s.match(re);
+      if (!m) return null;
+      const day = parseInt(m[1],10);
+      const moKey = m[2].toLowerCase();
+      const month = MONTHS[moKey] || MONTHS[moKey.replace(/\.$/, "")];
+      if (!month) return null;
+      let year = parseInt(m[3],10);
+      if (m[4]) year = -year;
+      const v = toDecimalYear(year, month, day);
+      return { start: v, end: v, precision: "day", approx: false, qualifier: null, isUnknown: false };
+    }
+
+    function parseYearRangeFull(s) {
+      let m = s.match(/\bbetween\s+(\d{1,4})\s+and\s+(\d{1,4})\s*(BC|BCE)?\b/i);
+      if (m) {
+        let y1 = parseInt(m[1],10), y2 = parseInt(m[2],10);
+        if (m[3]) { y1 = -y1; y2 = -y2; }
+        if (y1 > y2) [y1,y2] = [y2,y1];
+        return { start: y1, end: y2, precision: "year-range", approx: false, qualifier: null, isUnknown: false };
+      }
+      m = s.match(/\b(\d{3,4})\s*[-]\s*(\d{1,4})\s*(BC|BCE)?\b/i);
+      if (m) {
+        let y1 = parseInt(m[1],10);
+        let y2 = parseInt(m[2],10);
+        if (String(m[2]).length < 3) {
+          y2 = parseInt(String(y1).slice(0, String(y1).length - String(m[2]).length) + String(m[2]), 10);
+        }
+        if (m[3]) { y1 = -y1; y2 = -y2; }
+        if (y1 > y2) [y1,y2] = [y2,y1];
+        return { start: y1, end: y2, precision: "year-range", approx: false, qualifier: null, isUnknown: false };
+      }
+      m = s.match(/\b(\d{3,4})\s*\/\s*(\d{2}|\d{3,4})\s*(BC|BCE)?\b/i);
+      if (m) {
+        let y1 = parseInt(m[1],10);
+        let y2 = String(m[2]).length <= 2 ? twoDigitToFullYear(y1, parseInt(m[2],10)) : parseInt(m[2],10);
+        if (m[3]) { y1 = -y1; y2 = -y2; }
+        if (y1 > y2) [y1,y2] = [y2,y1];
+        return { start: y1, end: y2, precision: "year-range", approx: false, qualifier: null, isUnknown: false };
+      }
+      return null;
+    }
+
+    function parseCircaTerm(s) {
+      const circa = /\b(c\.|ca\.|circa)\b/i.test(s);
+      if (!circa) return null;
+      const r = parseYearRangeFull(s);
+      if (r) return { ...r, approx: true };
+      const m = s.match(/\b(c\.|ca\.|circa)\s*(\d{3,4})\b/i);
+      if (m) {
+        const y = parseInt(m[2],10);
+        return { start: y - 5, end: y + 5, precision: "year", approx: true, qualifier: null, isUnknown: false };
+      }
+      return null;
+    }
+
+    function parseBeforeAfter(s) {
+      let m = s.match(/\bbefore\s+(\d{1,4})\s*(BC|BCE)?\b/i);
+      if (m) {
+        let y = parseInt(m[1],10);
+        if (m[2]) y = -y;
+        return { start: Number.NEGATIVE_INFINITY, end: y - 1, precision: "open-range", approx: false, qualifier: "before", isUnknown: false };
+      }
+      m = s.match(/\bafter\s+(\d{1,4})\s*(BC|BCE)?\b/i);
+      if (m) {
+        let y = parseInt(m[1],10);
+        if (m[2]) y = -y;
+        return { start: y + 1, end: Number.POSITIVE_INFINITY, precision: "open-range", approx: false, qualifier: "after", isUnknown: false };
+      }
+      return null;
+    }
+
+    function parseCentury(s) {
+      const m = s.match(/\b(early|mid|late)?\s*(\d{1,2})\s*(st|nd|rd|th)\s+century\s*(BC|BCE)?\b/i);
+      if (!m) return null;
+      const phase = (m[1] || "").toLowerCase();
+      const cNum = parseInt(m[2],10);
+      const isBC = !!m[4];
+      let [start, end] = centuryBounds(cNum);
+      if (isBC) { start = -end; end = -(start); [start,end] = [start,end].sort((a,b)=>a-b); }
+      const span = end - start + 1;
+      const third = Math.floor(span / 3);
+      if (phase === "early")      end   = start + third - 1;
+      else if (phase === "mid") { start = start + third; end = start + third - 1; }
+      else if (phase === "late")  start = end - third + 1;
+      return { start, end, precision: "century", approx: false, qualifier: phase || null, isUnknown: false };
+    }
+
+    function parseCenturyAbbrev(s) {
+      const m = s.match(/\b(early|mid|late)?\s*(\d{1,2}|[IVXLC]+)\s*(st|nd|rd|th)?\s*(C\.?|c\.?)\b/i);
+      if (!m) return null;
+      const phase = (m[1] || "").toLowerCase();
+      const raw = m[2];
+      let cNum;
+      if (/^[IVXLC]+$/i.test(raw)) {
+        const map = {I:1,V:5,X:10,L:50,C:100};
+        let val = 0, prev = 0;
+        for (const ch of raw.toUpperCase().split("").reverse()) {
+          const n = map[ch];
+          if (n < prev) val -= n; else { val += n; prev = n; }
+        }
+        cNum = val;
+      } else {
+        cNum = parseInt(raw, 10);
+      }
+      let [start, end] = centuryBounds(cNum);
+      const span = end - start + 1;
+      const third = Math.floor(span / 3);
+      if (phase === "early")      end   = start + third - 1;
+      else if (phase === "mid") { start = start + third; end = start + third - 1; }
+      else if (phase === "late")  start = end - third + 1;
+      return { start, end, precision: "century", approx: false, qualifier: phase || null, isUnknown: false };
+    }
+
+    function parseDecade(s) {
+      const m = s.match(/\b(early|mid|late)?\s*(\d{3,4})s\b/i);
+      if (!m) return null;
+      const phase = (m[1] || "").toLowerCase();
+      const base  = parseInt(m[2],10);
+      let [start, end] = decadeBounds(base);
+      if (phase === "early")      end   = start + 3;
+      else if (phase === "mid") { start = start + 4; end = start + 2; }
+      else if (phase === "late")  start = start + 7;
+      return { start, end, precision: "decade", approx: false, qualifier: phase || null, isUnknown: false };
+    }
+
+    function parsePlainYearOrBCE(s) {
+      const m = s.match(/\b(\d{1,4})\s*(BC|BCE)?\b/i);
+      if (!m) return null;
+      let y = parseInt(m[1],10);
+      if (m[2]) y = -y;
+      return { start: y, end: y, precision: "year", approx: false, qualifier: null, isUnknown: false };
+    }
+
+    function parseUnknown(s) {
+      if (/\b(n\.?d\.?|undated|unknown|no date)\b/i.test(s)) {
+        return { start: NaN, end: NaN, precision: "unknown", approx: false, qualifier: null, isUnknown: true };
+      }
+      return null;
+    }
+
+    function parseDateRange(text) {
+      if (!text || !text.trim()) return { start: NaN, end: NaN, precision: "empty", approx: false, qualifier: null, isUnknown: true };
+      const s = cleanupDate(text);
+      return (
+        parseExactDayMonthYear(s) ||
+        parseCircaTerm(s)        ||
+        parseYearRangeFull(s)    ||
+        parseBeforeAfter(s)      ||
+        parseCenturyAbbrev(s)    ||
+        parseCentury(s)          ||
+        parseDecade(s)           ||
+        parsePlainYearOrBCE(s)   ||
+        parseUnknown(s)          ||
+        { start: NaN, end: NaN, precision: "unparsed", approx: false, qualifier: null, isUnknown: true }
+      );
+    }
+
+    function matchesYearRangeParsed(rangeObj, fromYear, toYear) {
+      if (!Number.isFinite(rangeObj.start) && !Number.isFinite(rangeObj.end)) {
+        return fromYear === null && toYear === null;
+      }
+      const min = Number.isFinite(rangeObj.start) ? rangeObj.start : Number.NEGATIVE_INFINITY;
+      const max = Number.isFinite(rangeObj.end)   ? rangeObj.end   : Number.POSITIVE_INFINITY;
+      if (fromYear !== null && max < fromYear) return false;
+      if (toYear   !== null && min > toYear)   return false;
+      return true;
+    }
+
+
+    function parseLinksCell(cellValue) {
+      if (!cellValue) return [];
+      return cellValue.split("|").map((part) => part.trim()).filter(Boolean);
+    }
+
+    function populateLanguageFilter(rows) {
+      const languages = new Set();
+      rows.forEach((row) => {
+        const value = row.Language;
+        if (!value) return;
+        value.split(/[,;]+/).forEach((part) => {
+          const trimmed = part.trim();
+          if (trimmed) languages.add(trimmed);
+        });
+      });
+      const sorted = Array.from(languages).sort((a, b) => a.localeCompare(b));
+      sorted.forEach((language) => {
+        const option = document.createElement("option");
+        option.value = language;
+        option.textContent = language;
+        languageSelect.appendChild(option);
+      });
+    }
+
+    function matchesLanguage(rowLanguage, filterLanguage) {
+      if (!filterLanguage) return true;
+      return rowLanguage.split(/[,;]+/).some((part) => part.trim() === filterLanguage);
+    }
+
+    function matchesYearRange(range, fromYear, toYear) {
+      const hasYearData = Number.isFinite(range.min) || Number.isFinite(range.max);
+      if (!hasYearData) return fromYear === null && toYear === null; // treat as unknown -> only passes when no year filters
+      if (fromYear !== null && range.max < fromYear) return false;
+      if (toYear !== null && range.min > toYear) return false;
+      return true;
+    }
+
+    function matchesLinkFilter(linksArray, setting) {
+      if (setting === "with") return linksArray.length > 0;
+      if (setting === "without") return linksArray.length === 0;
+      return true;
+    }
+
+    function renderLinksCell(cell, linksArray) {
+      cell.innerHTML = "";
+      if (linksArray.length === 0) {
+        cell.textContent = "\u2014";
+        cell.style.color = "rgba(0,0,0,0.5)";
+        return;
+      }
+      linksArray.forEach((url, index) => {
+        const pill = document.createElement("span");
+        pill.className = "link-pill";
+        const linkEl = document.createElement("a");
+        linkEl.href = url;
+        linkEl.target = "_blank";
+        linkEl.rel = "noopener noreferrer";
+        linkEl.textContent = `Link`;
+        pill.appendChild(linkEl);
+        cell.appendChild(pill);
+      });
+    }
+
+    // ---------- Favourites Model ----------
+    const LS_KEY = 'dm_favourites_v1';
+
+    function defaultFaves() { return { folders: { 'Default': [] }, active: 'Default' }; }
+
+    function loadFaves() {
+      try {
+        const raw = localStorage.getItem(LS_KEY);
+        if (!raw) return defaultFaves();
+        const parsed = JSON.parse(raw);
+        if (!parsed.folders || typeof parsed.folders !== 'object') return defaultFaves();
+        if (!parsed.active || !parsed.folders[parsed.active]) parsed.active = Object.keys(parsed.folders)[0] || 'Default';
+        return parsed;
+      } catch { return defaultFaves(); }
+    }
+
+    let faves = loadFaves();
+
+    
+    // ---- Fast favourites index ----
+    let favByShelfmark = new Map();
+    let favInFolder = new Map();
+
+    function rebuildFavIndex() {
+      favByShelfmark = new Map();
+      favInFolder = new Map();
+      const folders = faves?.folders || {};
+      Object.keys(folders).forEach(folder => {
+        const set = new Set((folders[folder] || []).map(i => i.Shelfmark));
+        favInFolder.set(folder, set);
+        set.forEach(sm => {
+          if (!favByShelfmark.has(sm)) favByShelfmark.set(sm, new Set());
+          favByShelfmark.get(sm).add(folder);
+        });
+      });
+    }
+    rebuildFavIndex();
+function saveFaves() { localStorage.setItem(LS_KEY, JSON.stringify(faves)); rebuildFavIndex(); }
+
+    function getActiveFolder() { return faves.active; }
+
+    function setActiveFolder(name) {
+      if (!faves.folders[name]) faves.folders[name] = [];
+      faves.active = name;
+      saveFaves();
+      renderFavouritesUI();
+      patchAllStarCells();
+    }
+
+    function ensureFolder(name) {
+      if (!name) return;
+      if (!faves.folders[name]) faves.folders[name] = [];
+      saveFaves();
+    }
+
+    function listFoldersContaining(shelfmark) {
+      const set = favByShelfmark.get(shelfmark);
+      return set ? Array.from(set) : [];
+    }
+
+    function isFavourite(shelfmark) {
+      return listFoldersContaining(shelfmark).length > 0;
+    }
+
+    function isFavouriteInActive(row) {
+      const active = getActiveFolder();
+      return favInFolder.get(active)?.has(row.Shelfmark) || false;
+    }
+
+    function toggleFavourite(row) {
+      const folder = getActiveFolder();
+      const items = faves.folders[folder] || (faves.folders[folder] = []);
+      const idx = items.findIndex(i => i.Shelfmark === row.Shelfmark);
+      if (idx >= 0) {
+        items.splice(idx, 1);
+      } else {
+        // Store minimal snapshot + first link for convenience
+        items.push({
+          Shelfmark: row.Shelfmark,
+          Title: row.Title,
+          Dates: row.Dates,
+          Language: row.Language,
+          Links: row.Links,
+          _links: row._links,
+          Notes: ''
+        });
+      }
+      saveFaves();
+      renderFavouritesUI();
+      patchStarForShelfmark(row.Shelfmark);
+    }
+
+    function removeFromFolder(folder, shelfmark) {
+      const items = faves.folders[folder] || [];
+      faves.folders[folder] = items.filter(i => i.Shelfmark !== shelfmark);
+      saveFaves();
+      renderFavouritesUI();
+      patchStarForShelfmark(shelfmark);
+    }
+
+    function moveItem(shelfmark, fromFolder, toFolder) {
+      ensureFolder(toFolder);
+      const from = faves.folders[fromFolder] || [];
+      const idx = from.findIndex(i => i.Shelfmark === shelfmark);
+      if (idx === -1) return;
+      const item = from.splice(idx, 1)[0];
+      const to = faves.folders[toFolder];
+      if (!to.some(i => i.Shelfmark === item.Shelfmark)) to.push(item);
+      saveFaves();
+      renderFavouritesUI();
+      patchStarForShelfmark(shelfmark);
+    }
+
+    // ---------- Favourites UI ----------
+    function renderFavouritesUI() {
+      // Folders dropdown
+      activeFolderSelect.innerHTML = '';
+      Object.keys(faves.folders).forEach(name => {
+        const opt = document.createElement('option');
+        opt.value = name; opt.textContent = name; opt.selected = (name === faves.active);
+        activeFolderSelect.appendChild(opt);
+      });
+
+      // Stats
+      const active = getActiveFolder();
+      const count = (faves.folders[active] || []).length;
+      folderStatsEl.textContent = `${active} • ${count} item${count === 1 ? '' : 's'}`;
+
+      // Items list
+      favItemsEl.innerHTML = '';
+      (faves.folders[active] || []).forEach(item => {
+        const div = document.createElement('div');
+        div.className = 'fav-item';
+
+        const header = document.createElement('div');
+        header.innerHTML = `<strong>${item.Shelfmark}</strong> — ${item.Title || ''}`;
+        div.appendChild(header);
+
+        // Links row
+        const linksRow = document.createElement('div');
+        renderLinksCell(linksRow, item._links || parseLinksCell(item.Links || ''));
+        div.appendChild(linksRow);
+
+        // Notes
+        const notes = document.createElement('textarea');
+        notes.rows = 1; notes.placeholder = 'Add a note…';
+        notes.value = item.Notes || '';
+        notes.addEventListener('change', () => { item.Notes = notes.value; saveFaves(); });
+        div.appendChild(notes);
+
+        // Actions
+        const actions = document.createElement('div');
+        actions.className = 'fav-actions';
+
+        const removeBtn = document.createElement('button');
+        removeBtn.textContent = 'Remove';
+        removeBtn.addEventListener('click', () => removeFromFolder(active, item.Shelfmark));
+        actions.appendChild(removeBtn);
+
+        const moveSelect = document.createElement('select');
+        Object.keys(faves.folders).forEach(name => {
+          const opt = document.createElement('option');
+          opt.value = name; opt.textContent = `Move to: ${name}`;
+          moveSelect.appendChild(opt);
+        });
+        moveSelect.addEventListener('change', () => {
+          const target = moveSelect.value;
+          if (target && target !== active) moveItem(item.Shelfmark, active, target);
+        });
+        actions.appendChild(moveSelect);
+
+        div.appendChild(actions);
+
+        favItemsEl.appendChild(div);
+      });
+    }
+
+    // Folder controls
+    activeFolderSelect.addEventListener('change', () => setActiveFolder(activeFolderSelect.value));
+
+    addFolderBtn.addEventListener('click', () => {
+      const name = prompt('New folder name:');
+      if (!name) return;
+      if (faves.folders[name]) {
+        alert('Folder already exists.');
+        return;
+      }
+      faves.folders[name] = [];
+      faves.active = name;
+      saveFaves();
+      renderFavouritesUI();
+    });
+
+    renameFolderBtn.addEventListener('click', () => {
+      const oldName = getActiveFolder();
+      const newName = prompt('Rename folder to:', oldName);
+      if (!newName || newName === oldName) return;
+      if (faves.folders[newName]) {
+        alert('A folder with that name already exists.');
+        return;
+      }
+      faves.folders[newName] = faves.folders[oldName];
+      delete faves.folders[oldName];
+      faves.active = newName;
+      saveFaves();
+      renderFavouritesUI();
+      renderTable(currentRows);
+    });
+
+    deleteFolderBtn.addEventListener('click', () => {
+      const name = getActiveFolder();
+      if (!confirm(`Delete folder "${name}"? Items in it will be removed from favourites.`)) return;
+      delete faves.folders[name];
+      // Ensure at least one folder exists
+      if (!Object.keys(faves.folders).length) faves.folders['Default'] = [];
+      faves.active = Object.keys(faves.folders)[0];
+      saveFaves();
+      renderFavouritesUI();
+      renderTable(currentRows);
+    });
+
+    // Import/Export
+    exportBtn.addEventListener('click', () => {
+      const blob = new Blob([JSON.stringify(faves, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'dm-favourites.json';
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+    });
+
+    importInput.addEventListener('change', async () => {
+      const file = importInput.files && importInput.files[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const json = JSON.parse(text);
+        if (!json || !json.folders) throw new Error('Invalid favourites file.');
+        faves = json;
+        saveFaves();
+        renderFavouritesUI();
+        renderTable(currentRows);
+        alert('Imported favourites.');
+      } catch (e) {
+        alert('Failed to import: ' + e.message);
+      } finally {
+        importInput.value = '';
+      }
+    });
+
+    // ---------- Table rendering & filtering ----------
+    // Update only the star cell for a given shelfmark
+    function patchStarForShelfmark(shelfmark) {
+      const rowEl = resultsBody.querySelector(`tr[data-shelfmark="${CSS.escape(shelfmark)}"]`);
+      if (!rowEl) return;
+      const btn = rowEl.querySelector('td:first-child button.star-btn');
+      if (!btn) return;
+      const folders = listFoldersContaining(shelfmark);
+      btn.className = 'star-btn' + (folders.length ? ' filled' : '');
+      btn.textContent = folders.length ? '⭐' : '☆';
+      btn.title = folders.length ? `In: ${folders.join(', ')}\n(click to toggle in active folder)` : 'Add to favourites (active folder)';
+    }
+    function patchAllStarCells() {
+      // Patch only visible rows
+      resultsBody.querySelectorAll('tr[data-shelfmark]').forEach(tr => {
+        const sm = tr.getAttribute('data-shelfmark');
+        patchStarForShelfmark(sm);
+      });
+    }
+
+    function renderTable(rows) {
+      currentRows = rows;
+      resultsBody.innerHTML = '';
+      const fragment = document.createDocumentFragment();
+
+      rows.forEach((row) => {
+        const tr = document.createElement('tr');
+
+        
+        tr.setAttribute('data-shelfmark', row.Shelfmark);// Favourite star
+        const favTd = document.createElement('td');
+        const star = document.createElement('button');
+        const folders = listFoldersContaining(row.Shelfmark);
+        const inActive = isFavouriteInActive(row);
+        star.className = 'star-btn' + (folders.length ? ' filled' : '');
+        star.textContent = folders.length ? '⭐' : '☆';
+        star.title = folders.length ? `In: ${folders.join(', ')} (click to toggle in active folder)` : 'Add to favourites (active folder)';
+        star.addEventListener('click', () => toggleFavourite(row));
+        favTd.appendChild(star);
+        tr.appendChild(favTd);
+
+        // Data cells
+        ['Shelfmark','Title','Dates','Language'].forEach((field) => {
+          const td = document.createElement('td');
+          td.textContent = row[field] || ''; if (field === 'Dates' && row._range) { try { td.title = JSON.stringify(row._range); } catch {} }
+          tr.appendChild(td);
+        });
+
+        const linksCell = document.createElement('td');
+        renderLinksCell(linksCell, row._links);
+        tr.appendChild(linksCell);
+
+        fragment.appendChild(tr);
+      });
+
+      resultsBody.appendChild(fragment);
+      summaryEl.textContent = `Showing ${rows.length.toLocaleString()} of ${catalogueRows.length.toLocaleString()} entries.`;
+    }
+
+    function applyFilters() {
+      const query = searchInput.value.trim().toLowerCase();
+      const languageFilterValue = languageSelect.value;
+      const fromYear = fromYearInput.value !== '' ? Number(fromYearInput.value) : null;
+      const toYear = toYearInput.value !== '' ? Number(toYearInput.value) : null;
+      const linkSetting = linkFilter.value;
+      const sortOrder = sortOrderSelect.value;
+
+      const filtered = catalogueRows.filter((row) => {
+        if (query) {
+          if (row._haystack && !row._haystack.includes(query)) return false;
+        }
+        if (!matchesLanguage(row.Language || '', languageFilterValue)) return false;
+        if (!matchesYearRangeParsed(row._range, fromYear, toYear)) return false;
+        if (!matchesLinkFilter(row._links, linkSetting)) return false;
+        return true;
+      });
+
+      const sorted = [...filtered];
+if (sortOrder === 'date-asc' || sortOrder === 'date-desc') {
+  const asc = sortOrder === 'date-asc';
+  sorted.sort((a, b) => {
+    const aStart = Number.isFinite(a._range?.start) ? a._range.start : (asc ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY);
+    const aEnd   = Number.isFinite(a._range?.end)   ? a._range.end   : (asc ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY);
+    const bStart = Number.isFinite(b._range?.start) ? b._range.start : (asc ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY);
+    const bEnd   = Number.isFinite(b._range?.end)   ? b._range.end   : (asc ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY);
+    if (asc) {
+      if (aStart !== bStart) return aStart - bStart;
+      if (aEnd   !== bEnd)   return aEnd   - bEnd;
+    } else {
+      if (aEnd   !== bEnd)   return bEnd   - aEnd;
+      if (aStart !== bStart) return bStart - aStart;
+    }
+    return a._index - b._index;
+  });
+} else {
+  // Original order
+  sorted.sort((a, b) => a._index - b._index);
+}
+
+renderTable(sorted);
+    }
+    // Simple debounce
+    function debounce(fn, ms) { 
+      let t; 
+      return function(...args) { clearTimeout(t); t = setTimeout(() => fn.apply(this, args), ms); }; 
+    }
+
+
+    
+    function attachFilterHandlers() {
+      const debounced = debounce(applyFilters, 200);
+      searchInput.addEventListener('input', debounced);
+      [languageSelect, fromYearInput, toYearInput, linkFilter, sortOrderSelect]
+        .forEach((el) => el.addEventListener('change', applyFilters));
+    }
+// ---------- Init ----------
+    function init() {
+      Papa.parse(CSV_PATH, {
+        download: true,
+        header: true,
+        skipEmptyLines: true,
+        complete: (result) => {
+          if (result.errors && result.errors.length > 0) console.warn('Parsing issues:', result.errors);
+          catalogueRows = result.data.map((row, index) => {
+            const normalised = {
+              Shelfmark: row['Shelfmark'] || '',
+              Title: row['Title'] || '',
+              Dates: row['Dates'] || '',
+              Language: row['Language'] || '',
+              Links: row['Links'] || ''
+            };
+            normalised._links = parseLinksCell(normalised.Links);
+            normalised._haystack = `${normalised.Shelfmark} ${normalised.Title}`.toLowerCase();
+            normalised._range = parseDateRange(normalised.Dates);
+            normalised._index = index;
+            return normalised;
+          });
+          populateLanguageFilter(catalogueRows);
+          attachFilterHandlers();
+          statusEl.remove();
+          appEl.hidden = false;
+          applyFilters();
+          renderFavouritesUI();
+        },
+        error: (err) => {
+          statusEl.className = 'error';
+          statusEl.textContent = `Failed to load CSV: ${err}`;
+        }
+      });
+    }
+
+    document.addEventListener('DOMContentLoaded', init);
+  </script>
+</body>
+</html>
